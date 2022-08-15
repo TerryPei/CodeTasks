@@ -333,7 +333,7 @@ def split_pos_neg(code, ast, comment):
 def train(args, our_model, local_rank, nprocs, resume=False):
     
     #-----------------------------------------------------#
-    # pre-train model with k-sim = (svdvals[:, 0] ** 2 - 1) / (k - 1)
+    # pre-train model with ****
     #-----------------------------------------------------#
     # torch.cuda.set_device(local_rank)
     # our_model.cuda(local_rank)
@@ -374,7 +374,6 @@ def train(args, our_model, local_rank, nprocs, resume=False):
             except:
                 logging.exception('Got exception on main handler')
                 raise
-            # logger.info("code_emb.device: {} | ast_emb.device: {} | comment_emb.device: {} ".format(code_emb.device, ast_emb.device, comment_emb.device))
             # cuda:0
             code_emb = code_emb / code_emb.norm(dim=-1, keepdim=True)
             ast_emb = ast_emb / ast_emb.norm(dim=-1, keepdim=True)
@@ -384,8 +383,6 @@ def train(args, our_model, local_rank, nprocs, resume=False):
 
             loss = our_loss(pos_samples, neg_samples, batch_size, k=3)
 
-            # logger.info("emb.device: ", emb.device) # cuda:0
-            # logger.info("check2")
 
             if args.n_gpu > 1:
                 loss = loss.mean()
