@@ -479,12 +479,124 @@ def main_worker(local_rank, nprocs, args):
     train_dataloader = build_loaders(args.train_data_file, batch_size=args.train_batch_size)
     
     scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=len(train_dataloader)*args.num_train_epochs*0.1, num_training_steps=len(train_dataloader)*args.num_train_epochs)
+   
+    if args.do_eval:
+        logger.info("do eval")
+        eval_dataloader, eval_sampler = build_loaders(args.eval_data_file, args.eval_batch_size)
+        mrr = evaluate(args, model, eval_dataloader, args.device, query='nl')
+        logger.info("Initial Mrr is: {:.6f}".format(mrr)) 
+        return
+
+    if args.do_train:
+        logger.info("do train")
+        train_dataloader, train_sampler = build_loaders(args.train_data_file, args.train_batch_size)
+        for epoch in range(args.start_epoch, args.epochs):
+            train_sampler.set_epoch(epoch)
+            eval_sampler.set_epoch(epoch)
+            
+            loss = train(train_dataloader, model, loss_func, optimizer, epoch, local_rank,
+              args, scheduler)
+            
+            if (epoch+1) % args.log_interval == 0:
+                # bar.set_description("epoch {} loss {}".format(idx,avg_loss))
+                eval_dataloader, _ = build_loaders(args.eval_data_file, args.eval_batch_size)
+                mrr = evaluate(args, model, eval_dataloader, args.device, query='nl')
+                logger.info("epoch {} | valid loss: {:.6f} | valid mrr: {:.6f}".format(epoch+1, loss/len(train_dataloader), mrr)) # right!
+
+    if args.do_test:
+        logger.info("do test")
+        test_dataloader, _ = build_loaders(args.test_data_file, args.eval_batch_size)
+        mrr = evaluate(args, model, test_dataloader, args.device, query='nl')
+        logger.info("MRR on test dataset WithOut fine-tuning is: {:.6f}".format(mrr)) 
 
 
-
-def main():
-    args = parser.parse_args()
+def main(args):
+    # args = parser.parse_args()
     args.nprocs = torch.cuda.device_count()
 
     mp.spawn(main_worker, nprocs=args.nprocs, args=(args.nprocs, args))
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(description='Process Parameters (For Ablation Study).')
+    ## Required parameters
+    parser.add_argument("--train_data_file", default=None, type=str, required=True,
+                        help="The input training data file (a json file).")
+    parser.add_argument("--output_dir", default=None, type=str, required=True,
+                        help="The output directory where the model predictions and checkpoints will be written.")
+    parser.add_argument("--eval_data_file", default=None, type=str,
+                        help="An optional input evaluation data file to evaluate the MRR(a jsonl file).")
+    parser.add_argument("--test_data_file", default=None, type=str,
+                        help="An optional input test data file to test the MRR(a josnl file).")
+    parser.add_argument("--codebase_file", default=None, type=str,
+                        help="An optional input test data file to codebase (a jsonl file).")  
+    
+    parser.add_argument("--lang", default=None, type=str,
+                        help="language.")
+    
+    parser.add_argument("--model_path", default="./pretrain/CodeV9/", type=str,
+                        help="The model checkpoint for weights initialization.")
+    parser.add_argument("--config_name", default="", type=str,
+                        help="Optional pretrained config name or path if not the same as model_name_or_path")
+    parser.add_argument("--tokenizer_name", default="", type=str,
+                        help="Optional pretrained tokenizer name or path if not the same as model_name_or_path")
+    
+    # If use single encoder and 
+
+    parser.add_argument("--max_code_length", default=128, type=int,
+                        help="Optional Code input sequence length after tokenization.") 
+    parser.add_argument("--max_comment_length", default=128, type=int,
+                        help="Optional NL input sequence length after tokenization.")    
+    parser.add_argument("--max_ast_length", default=128, type=int,
+                        help="Optional Data Flow input sequence length after tokenization.") 
+    
+    
+    parser.add_argument("--do_train", action='store_true',
+                        help="Whether to run training.")
+    parser.add_argument("--do_eval", action='store_true',
+                        help="Whether to run eval on the dev set.")
+    parser.add_argument("--do_test", action='store_true',
+                        help="Whether to run eval on the test set.")  
+
+    parser.add_argument("--log_interval", default=1, type=int,
+                        help="Log interval steps for epoch and loss.")
+    
+    parser.add_argument("--eval_interval", default=1, type=int,
+                        help="Evaluation interval steps for MRR.")
+
+    parser.add_argument("--cpkt_model_path", default="./results/cpkts/", type=str,
+                        help="Checkpoint path for saving model and optimizer.")
+                        
+    parser.add_argument("--train_batch_size", default=1024, type=int,
+                        help="Batch size for training.")
+    parser.add_argument("--eval_batch_size", default=1024, type=int,
+                        help="Batch size for evaluation.")
+    parser.add_argument("--learning_rate", default=2e-5, type=float,
+                        help="The initial learning rate for Adam.")
+    parser.add_argument("--eps", default=1e-8, type=float,
+                        help="The eps for Adam.")
+    parser.add_argument("--max_grad_norm", default=1.0, type=float,
+                        help="Max gradient norm.")
+    parser.add_argument("--num_train_epochs", default=200, type=int,
+                        help="Total number of training epochs to perform.")
+    parser.add_argument('--weight_decay', type=float, default=0.,
+                        help="Weight decay")
+    parser.add_argument('--seed', type=int, default=42,
+                        help="Random seed for initialization")
+
+
+    parser.add_argument('--local_rank', default=-1, type=int,
+                    help='node rank for distributed training')
+
+    parser.add_argument('--world_size', default=-1, type=int,
+                help='node rank for distributed training')
+    
+
+    args = parser.parse_args()
+
+        #set log
+    logging.basicConfig(filename='results/logs/pre_train_v9.log', format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
+                    datefmt='%m/%d/%Y %H:%M:%S',level=logging.DEBUG)
+ 
+    main(args)
 
