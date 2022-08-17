@@ -33,104 +33,6 @@ import torch.backends.cudnn as cudnn
 import warnings
 from utils import our_loss
 
-dfg_function={
-    'python':DFG_python,
-    'java':DFG_java,
-    'ruby':DFG_ruby,
-    'go':DFG_go,
-    'php':DFG_php,
-    'javascript':DFG_javascript
-}
-
-#load parsers
-parsers={}        
-for lang in dfg_function:
-    LANGUAGE = Language('./codeparser/my-languages.so', lang)
-    parser = Parser()
-    parser.set_language(LANGUAGE) 
-    parser = [parser,dfg_function[lang]]    
-    parsers[lang]= parser
-
-logger = logging.getLogger(__name__)
-
-
-def extract_ast(code, parser, lang):
-    #remove comments
-    try:
-        code=remove_comments_and_docstrings(code,lang)
-    except:
-        pass    
-    #obtain dataflow
-    if lang=="php":
-        code="<?php"+code+"?>"    
-    try:
-        tree = parser[0].parse(bytes(code,'utf8'))    
-        root_node = tree.root_node  
-        tokens_index=tree_to_token_index(root_node)     
-        code=code.split('\n')
-        code_tokens=[index_to_code_token(x,code) for x in tokens_index]  
-        index_to_code={}
-        for idx,(index,code) in enumerate(zip(tokens_index,code_tokens)):
-            index_to_code[index]=(idx,code)  
-        try:
-            tree_df,_=parser[1](root_node,index_to_code,{}) 
-        except:
-            tree_df=[]
-    
-        tree_df=sorted(tree_df,key=lambda x:x[1])
-
-
-        indexs=set()
-        for d in tree_df:
-            if len(d[-1])!=0:
-                indexs.add(d[1])
-            for x in d[-1]:
-                indexs.add(x)
-        new_tree_df=[]
-        for d in tree_df:
-            if d[1] in indexs:
-                new_tree_df.append(d)
-        tree_df=new_tree_df
-    except:
-        tree_df=[]
-
-    # code_tokens = [re.sub(r"[-()\"#/@;:<>{}`\[\]_.!,]", "", file) for file in code_tokens]
-    code_tokens = [token for token in code_tokens if token!=""]
-
-    ast_tokens = [x[0] for x in tree_df]
-    
-    return code_tokens, ast_tokens, tree_df
-
-    # return code_tokens,dfg
-
-def set_seed(seed=123456):
-    random.seed(seed)
-    os.environ['PYHTONHASHSEED'] = str(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.backends.cudnn.deterministic = True
-
-def save_model(model, tokenizer, path):
-    model_path = path + 'model'
-    tokenizer_path = path + 'tokenizer'
-
-    assert os.path.exists(model_path) == 1
-    model.save_pretrained(model_path)
-
-    assert os.path.exists(tokenizer_path) == 1
-    tokenizer.save_pretrained(tokenizer_path)
-
-def load_model(path):
-    model_path = path + 'model'
-    tokenizer_path = path + 'tokenizer'
-
-    assert os.path.exists(model_path) == 1
-    model =  AutoModel.from_pretrained(model_path)
-
-    assert os.path.exists(tokenizer_path) == 1
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, config=AutoConfig.from_pretrained(model_path))
-    return model, tokenizer
 
 class Pair(object):
     """
@@ -515,6 +417,105 @@ def main(args):
     args.nprocs = torch.cuda.device_count()
 
     mp.spawn(main_worker, nprocs=args.nprocs, args=(args.nprocs, args))
+    
+dfg_function={
+    'python':DFG_python,
+    'java':DFG_java,
+    'ruby':DFG_ruby,
+    'go':DFG_go,
+    'php':DFG_php,
+    'javascript':DFG_javascript
+}
+
+#load parsers
+parsers={}        
+for lang in dfg_function:
+    LANGUAGE = Language('./codeparser/my-languages.so', lang)
+    parser = Parser()
+    parser.set_language(LANGUAGE) 
+    parser = [parser,dfg_function[lang]]    
+    parsers[lang]= parser
+
+logger = logging.getLogger(__name__)
+
+
+def extract_ast(code, parser, lang):
+    #remove comments
+    try:
+        code=remove_comments_and_docstrings(code,lang)
+    except:
+        pass    
+    #obtain dataflow
+    if lang=="php":
+        code="<?php"+code+"?>"    
+    try:
+        tree = parser[0].parse(bytes(code,'utf8'))    
+        root_node = tree.root_node  
+        tokens_index=tree_to_token_index(root_node)     
+        code=code.split('\n')
+        code_tokens=[index_to_code_token(x,code) for x in tokens_index]  
+        index_to_code={}
+        for idx,(index,code) in enumerate(zip(tokens_index,code_tokens)):
+            index_to_code[index]=(idx,code)  
+        try:
+            tree_df,_=parser[1](root_node,index_to_code,{}) 
+        except:
+            tree_df=[]
+    
+        tree_df=sorted(tree_df,key=lambda x:x[1])
+
+
+        indexs=set()
+        for d in tree_df:
+            if len(d[-1])!=0:
+                indexs.add(d[1])
+            for x in d[-1]:
+                indexs.add(x)
+        new_tree_df=[]
+        for d in tree_df:
+            if d[1] in indexs:
+                new_tree_df.append(d)
+        tree_df=new_tree_df
+    except:
+        tree_df=[]
+
+    # code_tokens = [re.sub(r"[-()\"#/@;:<>{}`\[\]_.!,]", "", file) for file in code_tokens]
+    code_tokens = [token for token in code_tokens if token!=""]
+
+    ast_tokens = [x[0] for x in tree_df]
+    
+    return code_tokens, ast_tokens, tree_df
+
+    # return code_tokens,dfg
+
+def set_seed(seed=123456):
+    random.seed(seed)
+    os.environ['PYHTONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+
+def save_model(model, tokenizer, path):
+    model_path = path + 'model'
+    tokenizer_path = path + 'tokenizer'
+
+    assert os.path.exists(model_path) == 1
+    model.save_pretrained(model_path)
+
+    assert os.path.exists(tokenizer_path) == 1
+    tokenizer.save_pretrained(tokenizer_path)
+
+def load_model(path):
+    model_path = path + 'model'
+    tokenizer_path = path + 'tokenizer'
+
+    assert os.path.exists(model_path) == 1
+    model =  AutoModel.from_pretrained(model_path)
+
+    assert os.path.exists(tokenizer_path) == 1
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, config=AutoConfig.from_pretrained(model_path))
+    return model, tokenizer
 
 if __name__ == '__main__':
 
